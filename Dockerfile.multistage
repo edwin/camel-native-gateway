@@ -1,0 +1,22 @@
+## Stage 1 : build with maven builder image with native capabilities
+FROM registry.redhat.io/quarkus/mandrel-for-jdk-21-rhel8:23.1 AS build
+COPY --chown=quarkus:quarkus --chmod=0755 mvnw /code/mvnw
+COPY --chown=quarkus:quarkus .mvn /code/.mvn
+COPY --chown=quarkus:quarkus pom.xml /code/
+USER quarkus
+WORKDIR /code
+COPY src /code/src
+RUN ./mvnw package -Dnative
+
+## Stage 2 : create the docker final image
+FROM quay.io/quarkus/quarkus-distroless-image:2.0
+
+ENV LANGUAGE='en_US:en'
+ENV TZ='Asia/Jakarta'
+
+COPY --from=build /code/target/*-runner /application
+
+EXPOSE 8080
+USER nonroot
+
+CMD ["./application", "-Dquarkus.http.host=0.0.0.0"]
