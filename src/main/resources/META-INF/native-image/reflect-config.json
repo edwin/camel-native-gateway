@@ -1,0 +1,8 @@
+[
+  {
+    "name": "org.apache.camel.processor.ThrottlerRejectedExecutionException"
+  },
+  {
+    "name": "org.apache.camel.processor.ThrottlerRejectedExecutionPolicy"
+  }
+]
