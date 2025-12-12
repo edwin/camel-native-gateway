@@ -1,0 +1,11 @@
+FROM quay.io/quarkus/quarkus-distroless-image:2.0
+
+ENV LANGUAGE='en_US:en'
+ENV TZ='Asia/Jakarta'
+
+COPY target/*-runner /application
+
+EXPOSE 8080
+USER nonroot
+
+CMD ["./application", "-Dquarkus.http.host=0.0.0.0"]
