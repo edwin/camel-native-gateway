@@ -22,16 +22,34 @@ classDiagram
         +configure() void
     }
 
-    class CustomerRoute {
+    class BaseRoute {
+        <<abstract>>
         +configure() void
+        #getRouteUrl() String
+        #getRouteId() String
+        #getDownstreamUrl() String
+        #getDownstreamLogMessage() String
+        #prepareDownstreamRequest(Exchange) void
+    }
+
+    class CustomerRoute {
+        #getRouteUrl() String
+        #getRouteId() String
+        #getDownstreamUrl() String
+        #getDownstreamLogMessage() String
     }
 
     class ProductRoute {
-        +configure() void
+        #getRouteUrl() String
+        #getRouteId() String
+        #getDownstreamUrl() String
+        #getDownstreamLogMessage() String
+        #prepareDownstreamRequest(Exchange) void
     }
 
-    RouteBuilder <|-- CustomerRoute
-    RouteBuilder <|-- ProductRoute
+    RouteBuilder <|-- BaseRoute
+    BaseRoute <|-- CustomerRoute
+    BaseRoute <|-- ProductRoute
 
     class Exchange {
         <<interface>>
@@ -43,10 +61,8 @@ classDiagram
     class ThrottlerRejectedExecutionException {
     }
 
-    CustomerRoute ..> Exchange : uses
-    CustomerRoute ..> ThrottlerRejectedExecutionException : handles
-    ProductRoute ..> Exchange : uses
-    ProductRoute ..> ThrottlerRejectedExecutionException : handles
+    BaseRoute ..> Exchange : uses
+    BaseRoute ..> ThrottlerRejectedExecutionException : handles
 ```
 
 ### Sequence Diagrams
@@ -137,10 +153,19 @@ quarkus.http.port=8080
 
 # Logging configuration
 quarkus.log.level=INFO
-quarkus.log.category."com.edw".level=DEBUG
+quarkus.log.category."com.edw".level=${LOG_LEVEL:DEBUG}
+quarkus.log.console.format=%d{yyyy-MM-dd HH:mm:ss,SSS} %h  %-5p [%c{3.}] (%t) %s%e%n
 
-# Downstream service URL (can be overridden with environment variable)
-downstream.service.url.customer=${DOWNSTREAM_SERVICE_URL_CUSTOMER:localhost:80}
+# Disable sending anonymous statistics
+quarkus.analytics.disabled=true
+
+# Downstream service URLs (can be overridden with environment variables)
+downstream.service.url.customer=${DOWNSTREAM_SERVICE_URL_CUSTOMER:http\://localhost:80}
+downstream.service.url.product=${DOWNSTREAM_SERVICE_URL_PRODUCT:https\://ecommerce-middleware.apps-crc.testing}
+
+# HTTP client timeouts
+downstream.http.connectTimeout=2000
+downstream.http.socketTimeout=2000
 ```
 
 ### Building the Application
@@ -185,13 +210,14 @@ docker run -p 8080:8080 camel-native-gateway
 
 ### Environment Variables
 
-- `DOWNSTREAM_SERVICE_URL_CUSTOMER`: URL of the downstream customer service (default: localhost:80)
+- `LOG_LEVEL`: Log level for com.edw package (default: DEBUG)
+- `DOWNSTREAM_SERVICE_URL_CUSTOMER`: URL of the downstream customer service (default: http://localhost:80)
 - `DOWNSTREAM_SERVICE_URL_PRODUCT`: URL of the downstream product service (default: https://ecommerce-middleware.apps-crc.testing)
 
 ## API Endpoints
 
 - `GET /api/v1/customers`: Proxies requests to the downstream customer service
-- `GET /api/v1/products`: Proxies requests to the downstream product service (transforms path to /api/product)
+- `GET /api/v1/products`: Proxies requests to the downstream product service (transforms path from "/v1/products" to "/product")
 
 ## Resilience Features
 
@@ -205,4 +231,4 @@ The circuit breaker opens after 5 failures with a 50% failure ratio, preventing 
 
 ### Timeouts
 
-Requests to downstream services timeout after 2 seconds, preventing resource exhaustion.
+Requests to downstream services have both connect and socket timeouts configured to 2 seconds (via downstream.http.connectTimeout and downstream.http.socketTimeout), preventing resource exhaustion.

@@ -1,12 +1,7 @@
 package com.edw.customer.route;
 
+import com.edw.common.route.BaseRoute;
 import jakarta.enterprise.context.ApplicationScoped;
-import org.apache.camel.Exchange;
-import org.apache.camel.LoggingLevel;
-import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.processor.ThrottlerRejectedExecutionException;
-
-import java.util.Map;
 
 /**
  * <pre>
@@ -17,59 +12,26 @@ import java.util.Map;
  * 12 Dec 2025 15:10
  */
 @ApplicationScoped
-public class CustomerRoute extends RouteBuilder {
+public class CustomerRoute extends BaseRoute {
 
     @Override
-    public void configure() throws Exception {
-
-        // Error Handler for unhandled exceptions
-        onException(Exception.class)
-                .handled(true)
-                .setHeader(Exchange.HTTP_RESPONSE_CODE, constant(500))
-                .setBody(constant(Map.of("error", "gateway error")))
-                .log(LoggingLevel.INFO,"gateway error")
-                .marshal().json();
-
-        onException(ThrottlerRejectedExecutionException.class)
-                .handled(true)
-                .setHeader(Exchange.HTTP_RESPONSE_CODE, constant(429))
-                .setBody(constant(Map.of("error", "too many requests")))
-                .log(LoggingLevel.INFO,"too many requests")
-                .marshal().json();
-
-        from("platform-http:/api/v1/customers?matchOnUriPrefix=true")
-                .routeId("user-service-gateway")
-                .log(LoggingLevel.DEBUG,"Received request : ${header.CamelHttpPath} - body : ${body}")
-
-                // throttling
-                .throttle(10) // 10 concurrent requests
-                    .timePeriodMillis(1000) // 1 second
-                    .rejectExecution(true)
-                .end()
-
-                // circuit breaker
-                .circuitBreaker()
-                    .faultToleranceConfiguration()
-                        .timeoutEnabled(true)
-                        .timeoutDuration(2000) // timeout in milliseconds
-                        .requestVolumeThreshold(5) // open after 5 errors
-                        .failureRatio(50)
-                .end()
-
-                // request to downstream service
-                .removeHeader(Exchange.HTTP_URI)
-                .log(LoggingLevel.DEBUG,"firing to downstream service {{downstream.service.url.customer}}")
-                .to("{{downstream.service.url.customer}}/?bridgeEndpoint=true&throwExceptionOnFailure=true")
-                .removeHeaders("(?i)(Forwarded|X-Forwarded.*|X-Envoy.*|Server|User-Agent|Accept|X-Request-Id|X-Powered-By)")
-                .log(LoggingLevel.DEBUG, "response body is ${body}")
-
-                // handle fallback
-                .onFallback()
-                    .log(LoggingLevel.INFO,"Circuit Breaker triggered! Service unavailable.")
-                    .setHeader(Exchange.HTTP_RESPONSE_CODE, constant(503))
-                    .setBody(constant(Map.of("error", "service unavailable")))
-                    .marshal().json()
-                .end();
+    protected String getRouteUrl() {
+        return "platform-http:/api/v1/customers?matchOnUriPrefix=true";
     }
 
+    @Override
+    protected String getRouteId() {
+        return "user-service-gateway";
+    }
+
+    @Override
+    protected String getDownstreamUrl() {
+        return "{{downstream.service.url.customer}}/?bridgeEndpoint=true&throwExceptionOnFailure=true&connectTimeout={{downstream.http.connectTimeout}}" +
+                "&socketTimeout={{downstream.http.socketTimeout}}";
+    }
+
+    @Override
+    protected String getDownstreamLogMessage() {
+        return "firing to downstream service {{downstream.service.url.customer}}";
+    }
 }
