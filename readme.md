@@ -21,47 +21,91 @@ classDiagram
         <<abstract>>
         +configure() void
     }
-    
+
     class CustomerRoute {
         +configure() void
     }
-    
+
+    class ProductRoute {
+        +configure() void
+    }
+
     RouteBuilder <|-- CustomerRoute
-    
+    RouteBuilder <|-- ProductRoute
+
     class Exchange {
         <<interface>>
         +HTTP_RESPONSE_CODE
         +HTTP_URI
+        +HTTP_PATH
     }
-    
+
     class ThrottlerRejectedExecutionException {
     }
-    
+
     CustomerRoute ..> Exchange : uses
     CustomerRoute ..> ThrottlerRejectedExecutionException : handles
+    ProductRoute ..> Exchange : uses
+    ProductRoute ..> ThrottlerRejectedExecutionException : handles
 ```
 
-### Sequence Diagram
+### Sequence Diagrams
+
+#### Customer Route
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant Gateway as Camel Native Gateway
-    participant Downstream as Downstream Service
-    
+    participant Downstream as Customer Downstream Service
+
     Client->>Gateway: HTTP Request to /api/v1/customers
-    
+
     alt Too Many Requests
         Gateway->>Gateway: Throttle Check (>10 req/sec)
         Gateway->>Client: 429 Too Many Requests
     else Request Allowed
         Gateway->>Gateway: Circuit Breaker Check
-        
+
         alt Circuit Open (Service Unhealthy)
             Gateway->>Client: 503 Service Unavailable
         else Circuit Closed (Service Healthy)
             Gateway->>Downstream: Forward Request
-            
+
+            alt Downstream Responds Successfully
+                Downstream->>Gateway: Response
+                Gateway->>Client: Forward Response
+            else Downstream Fails or Times Out
+                Downstream->>Gateway: Error/Timeout
+                Gateway->>Client: 503 Service Unavailable
+                Gateway->>Gateway: Update Circuit Breaker State
+            end
+        end
+    end
+```
+
+#### Product Route
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Gateway as Camel Native Gateway
+    participant Downstream as Product Downstream Service
+
+    Client->>Gateway: HTTP Request to /api/v1/products
+
+    alt Too Many Requests
+        Gateway->>Gateway: Throttle Check (>10 req/sec)
+        Gateway->>Client: 429 Too Many Requests
+    else Request Allowed
+        Gateway->>Gateway: Circuit Breaker Check
+
+        alt Circuit Open (Service Unhealthy)
+            Gateway->>Client: 503 Service Unavailable
+        else Circuit Closed (Service Healthy)
+            Gateway->>Gateway: Transform Path (/v1/products to /product)
+            Gateway->>Downstream: Forward Request
+
             alt Downstream Responds Successfully
                 Downstream->>Gateway: Response
                 Gateway->>Client: Forward Response
@@ -142,10 +186,12 @@ docker run -p 8080:8080 camel-native-gateway
 ### Environment Variables
 
 - `DOWNSTREAM_SERVICE_URL_CUSTOMER`: URL of the downstream customer service (default: localhost:80)
+- `DOWNSTREAM_SERVICE_URL_PRODUCT`: URL of the downstream product service (default: https://ecommerce-middleware.apps-crc.testing)
 
 ## API Endpoints
 
 - `GET /api/v1/customers`: Proxies requests to the downstream customer service
+- `GET /api/v1/products`: Proxies requests to the downstream product service (transforms path to /api/product)
 
 ## Resilience Features
 
