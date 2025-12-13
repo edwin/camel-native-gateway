@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.MDC;
 
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * <pre>
@@ -43,7 +44,7 @@ public abstract class BaseRoute extends RouteBuilder {
                 .process(exchange -> {
                     String traceId = exchange.getIn().getHeader("X-Trace-Id", String.class);
                     if (traceId == null || traceId.isBlank()) {
-                        traceId = randomStringGenerator(null);
+                        traceId = randomStringGenerator(32);
                     }
                     String spanId = randomStringGenerator(16);
                     String requestId = randomStringGenerator(42);
@@ -133,15 +134,16 @@ public abstract class BaseRoute extends RouteBuilder {
 
     private String randomStringGenerator(Integer length) {
         if(length == null || length <= 0)
-            return java.util.UUID.randomUUID().toString().replace("-", "");
-        else if (length > 32) {
-            String uuid = java.util.UUID.randomUUID().toString().replace("-", "");
-            while (uuid.length() < length) {
-                uuid += java.util.UUID.randomUUID().toString().replace("-", "");
-            }
-            return uuid.substring(0, length);
+            length = 8;
+
+        String chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+        StringBuilder sb = new StringBuilder(length);
+
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        for (int i = 0; i < length; i++) {
+            sb.append(chars.charAt(rnd.nextInt(chars.length())));
         }
-        else
-            return java.util.UUID.randomUUID().toString().replace("-", "").substring(0, length);
+
+        return sb.toString();
     }
 }
