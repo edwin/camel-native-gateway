@@ -154,7 +154,7 @@ quarkus.http.port=8080
 # Logging configuration
 quarkus.log.level=INFO
 quarkus.log.category."com.edw".level=${LOG_LEVEL:DEBUG}
-quarkus.log.console.format=%d{yyyy-MM-dd HH:mm:ss,SSS} %h  %-5p [%c{3.}] (%t) %s%e%n
+quarkus.log.console.format=%d{yyyy-MM-dd HH:mm:ss,SSS} %h %-5p [%c{3.}] [%X{traceId},%X{spanId},%X{requestId}] (%t) %s%e%n
 
 # Disable sending anonymous statistics
 quarkus.analytics.disabled=true
@@ -184,9 +184,22 @@ downstream.http.socketTimeout=2000
 
 #### Using Docker
 
-```bash
-docker build -f Dockerfile.multistage -t camel-native-gateway .
-```
+The project provides two Dockerfile options:
+
+1. **Dockerfile.distroless**: Uses a pre-built native executable and packages it in a minimal distroless container.
+   ```bash
+   # First build the native executable
+   ./mvnw clean package -Dnative
+
+   # Then build the container
+   docker build -f Dockerfile.distroless -t camel-native-gateway .
+   ```
+
+2. **Dockerfile.multistage**: Builds the native executable inside a container and then packages it in a minimal distroless container.
+   ```bash
+   # Build everything in one step
+   docker build -f Dockerfile.multistage -t camel-native-gateway .
+   ```
 
 ### Running the Application
 
@@ -220,6 +233,15 @@ docker run -p 8080:8080 camel-native-gateway
 - `GET /api/v1/products`: Proxies requests to the downstream product service (transforms path from "/v1/products" to "/product")
 
 ## Resilience Features
+
+### Request Tracing
+
+The gateway implements distributed tracing with the following headers:
+- `X-Trace-Id`: Unique identifier for the entire request chain
+- `X-Span-Id`: Identifier for this specific service's handling of the request
+- `X-Request-Id`: Unique identifier for this specific request
+
+These IDs are propagated to downstream services and included in log messages for easy correlation.
 
 ### Throttling
 
