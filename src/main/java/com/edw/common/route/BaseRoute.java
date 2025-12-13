@@ -4,6 +4,7 @@ import org.apache.camel.Exchange;
 import org.apache.camel.LoggingLevel;
 import org.apache.camel.builder.RouteBuilder;
 import org.slf4j.Logger;
+import org.slf4j.MDC;
 
 import java.util.Map;
 
@@ -39,6 +40,24 @@ public abstract class BaseRoute extends RouteBuilder {
 
         from(getRouteUrl())
                 .routeId(getRouteId())
+                .process(exchange -> {
+                    String traceId = exchange.getIn().getHeader("X-Trace-Id", String.class);
+                    if (traceId == null || traceId.isBlank()) {
+                        traceId = randomStringGenerator(null);
+                    }
+                    String spanId = randomStringGenerator(16);
+                    String requestId = randomStringGenerator(42);
+
+                    // 1️⃣ Put into MDC (for logging)
+                    MDC.put("traceId", traceId);
+                    MDC.put("spanId", spanId);
+                    MDC.put("requestId", requestId);
+
+                    // 2️⃣ Put into headers (for propagation)
+                    exchange.getIn().setHeader("X-Trace-Id", traceId);
+                    exchange.getIn().setHeader("X-Span-Id", spanId);
+                    exchange.getIn().setHeader("X-Request-Id", requestId);
+                })
                 .log(LoggingLevel.DEBUG,"Received request : ${header.CamelHttpPath} - body : ${body}")
 
                 // throttling
@@ -64,10 +83,15 @@ public abstract class BaseRoute extends RouteBuilder {
                 .removeHeaders("(?i)(Forwarded|X-Forwarded.*|X-Envoy.*|Server|User-Agent|Accept|X-Request-Id|X-Powered-By)")
                 .log(LoggingLevel.DEBUG, "response body is ${body}")
 
+                // clear MDC
+                .process(e -> MDC.clear())
+
                 // handle fallback
                 .onFallback()
                     .log(LoggingLevel.INFO,"Circuit Breaker triggered! Service unavailable.")
+                    .removeHeaders("*") // remove all headers
                     .setHeader(Exchange.HTTP_RESPONSE_CODE, constant(503))
+                    .setHeader(Exchange.CONTENT_TYPE, constant("application/json"))
                     .setBody(constant(Map.of("error", "service unavailable")))
                     .marshal().json()
                 .end();
@@ -105,5 +129,19 @@ public abstract class BaseRoute extends RouteBuilder {
     protected void prepareDownstreamRequest(Exchange exchange) {
         // Default implementation does nothing
         // Subclasses can override to add custom logic
+    }
+
+    private String randomStringGenerator(Integer length) {
+        if(length == null)
+            return java.util.UUID.randomUUID().toString().replace("-", "");
+        else if (length > 32) {
+            String uuid = java.util.UUID.randomUUID().toString().replace("-", "");
+            while (uuid.length() < length) {
+                uuid += java.util.UUID.randomUUID().toString().replace("-", "");
+            }
+            return uuid.substring(0, length);
+        }
+        else
+            return java.util.UUID.randomUUID().toString().replace("-", "").substring(0, length);
     }
 }
