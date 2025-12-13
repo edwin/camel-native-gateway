@@ -132,7 +132,7 @@ public abstract class BaseRoute extends RouteBuilder {
     }
 
     private String randomStringGenerator(Integer length) {
-        if(length == null)
+        if(length == null || length <= 0)
             return java.util.UUID.randomUUID().toString().replace("-", "");
         else if (length > 32) {
             String uuid = java.util.UUID.randomUUID().toString().replace("-", "");
