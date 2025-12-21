@@ -83,7 +83,11 @@ public abstract class BaseRoute extends RouteBuilder {
                 .removeHeader(Exchange.HTTP_URI)
                 .log(LoggingLevel.DEBUG, getDownstreamLogMessage())
                 .to(getDownstreamUrl())
-                .removeHeaders("(?i)(Forwarded|X-Forwarded.*|X-Envoy.*|Server|User-Agent|Accept|X-Request-Id|X-Powered-By)")
+                .removeHeaders("(?i)(Forwarded|X-Forwarded.*|X-Envoy.*|Server|User-Agent|Accept|X-Request-Id|X-Powered-By|traceparent|X-Span-Id|X-Trace-Id)")
+                .process(exchange -> {
+                    // send traceid to frontend
+                    exchange.getIn().setHeader("Trace-Id", Span.current().getSpanContext().getTraceId());
+                })
                 .log(LoggingLevel.DEBUG, "response body is ${body}")
 
                 // clear MDC
