@@ -1,5 +1,6 @@
 package com.edw.common.route;
 
+import io.opentelemetry.api.trace.Span;
 import org.apache.camel.Exchange;
 import org.apache.camel.LoggingLevel;
 import org.apache.camel.builder.RouteBuilder;
@@ -42,11 +43,9 @@ public abstract class BaseRoute extends RouteBuilder {
         from(getRouteUrl())
                 .routeId(getRouteId())
                 .process(exchange -> {
-                    String traceId = exchange.getIn().getHeader("X-Trace-Id", String.class);
-                    if (traceId == null || traceId.isBlank()) {
-                        traceId = randomStringGenerator(32);
-                    }
-                    String spanId = randomStringGenerator(16);
+                    Span currentSpan = Span.current();
+                    String traceId = currentSpan.getSpanContext().getTraceId();
+                    String spanId = currentSpan.getSpanContext().getSpanId();
                     String requestId = randomStringGenerator(42);
 
                     // 1️⃣ Put into MDC (for logging)
@@ -58,6 +57,9 @@ public abstract class BaseRoute extends RouteBuilder {
                     exchange.getIn().setHeader("X-Trace-Id", traceId);
                     exchange.getIn().setHeader("X-Span-Id", spanId);
                     exchange.getIn().setHeader("X-Request-Id", requestId);
+
+                    // put requestid into span for logging purpose
+                    io.opentelemetry.api.trace.Span.current().setAttribute("request.id", requestId);
                 })
                 .log(LoggingLevel.DEBUG,"Received request : ${header.CamelHttpPath} - body : ${body}")
 
