@@ -48,12 +48,12 @@ public abstract class BaseRoute extends RouteBuilder {
                     String spanId = currentSpan.getSpanContext().getSpanId();
                     String requestId = randomStringGenerator(42);
 
-                    // 1️⃣ Put into MDC (for logging)
+                    // Put into MDC (for logging)
                     MDC.put("traceId", traceId);
                     MDC.put("spanId", spanId);
                     MDC.put("requestId", requestId);
 
-                    // 2️⃣ Put into headers (for propagation)
+                    // Put into headers (for propagation)
                     exchange.getIn().setHeader("X-Trace-Id", traceId);
                     exchange.getIn().setHeader("X-Span-Id", spanId);
                     exchange.getIn().setHeader("X-Request-Id", requestId);
@@ -61,7 +61,16 @@ public abstract class BaseRoute extends RouteBuilder {
                     // put requestid into span for logging purpose
                     io.opentelemetry.api.trace.Span.current().setAttribute("request.id", requestId);
                 })
-                .log(LoggingLevel.DEBUG,"Received request : ${header.CamelHttpPath} - body : ${body}")
+                .log(LoggingLevel.DEBUG,"Received request : ${header.CamelHttpPath}")
+
+                // sensitive value masking --> "password":"********"
+                .process(exchange -> {
+                    String body = exchange.getIn().getBody(String.class);
+                    if(body != null && body.contains("password")) {
+                        body = body.replaceAll("(?i)(\\\"password\\\"\\s*:\\s*\\\")[^\\\"]+(\\\")", "$1********$2");
+                        logger.info("Received request body : {}", body);
+                    }
+                })
 
                 // throttling
                 .throttle(10) // 10 concurrent requests
@@ -81,14 +90,14 @@ public abstract class BaseRoute extends RouteBuilder {
                 // request to downstream service
                 .process(this::prepareDownstreamRequest)
                 .removeHeader(Exchange.HTTP_URI)
-                .log(LoggingLevel.DEBUG, getDownstreamLogMessage())
+                .log(LoggingLevel.INFO, getDownstreamLogMessage())
                 .to(getDownstreamUrl())
                 .removeHeaders("(?i)(Forwarded|X-Forwarded.*|X-Envoy.*|Server|User-Agent|Accept|X-Request-Id|X-Powered-By|traceparent|X-Span-Id|X-Trace-Id)")
                 .process(exchange -> {
                     // send traceid to frontend
                     exchange.getIn().setHeader("Trace-Id", Span.current().getSpanContext().getTraceId());
                 })
-                .log(LoggingLevel.DEBUG, "response body is ${body}")
+                .log(LoggingLevel.INFO, "response body is ${body}")
 
                 // clear MDC
                 .process(e -> MDC.clear())
